@@ -13,11 +13,19 @@ class Proxy(rpyc.Service):
     }
     # 最多允许五个客户登录
     client_conn = [False] * 5
-    global_log = []
 
     def __init__(self):
-        self.data_store = {}
+        # 用户本地的日志由代理服务器维护
         self.log = []
+        # 连接到服务器，转发客户端的请求
+        self.conn = rpyc.connect("localhost", 8000)
+        self.service = self.conn.root
+
+    def on_connect(self, conn):
+        print("Client connected")
+
+    def on_disconnect(self, conn):
+        print("Client disconnected")
 
     def get_id(self):
         """
@@ -32,47 +40,65 @@ class Proxy(rpyc.Service):
         print("代理服务器已经到达最大连接数量，无法继续连接")
         return None
 
-    def on_connect(self, conn):
-        print("Client connected")
-
-    def on_disconnect(self, conn):
-        print("Client disconnected")
-
-    def log_operation(self, user_id, operation, key, value=None):
+    def log_operation(self, operation, key, value=None):
         log_entry = {"operation": operation, "key": key, "value": value}
-        global_log_entry = {"user": user_id, "operation": operation, "key": key, "value": value}
         self.log.append(log_entry)  # 每个用户自己的log
-        self.global_log.append(global_log_entry)  # 看到全局的操作
 
     def exposed_login(self, username, password):
+        """
+        由代理服务器来实现登录功能
+        :param username:
+        :param password:
+        :return:
+        """
         if self.users[username] == password:
             user_id = self.get_id()
             return user_id
         return None
 
     def exposed_get_key(self, user_id, key):
-        print(f"GET: {key}")
-        result = self.data_store.get(key, None)
-        self.log_operation(user_id, "get", key, result)
+        """
+        这些功能要转发给服务器进行处理
+        :param user_id:
+        :param key:
+        :return: result
+        """
+        result = self.service.exposed_get_key(user_id, key)
+        self.log_operation("get", key, result)
         return result
 
     def exposed_put_key(self, user_id, key, value):
-        print(f"PUT: {key}={value}")
-        self.data_store[key] = value
-        self.log_operation(user_id, "put", key, value)
+        """
+        转发给服务器去处理
+        :param user_id:
+        :param key:
+        :param value:
+        :return:
+        """
+        self.service.exposed_put_key(user_id, key, value)
+        self.log_operation("put", key, value)
         return "success"
 
     def exposed_del_key(self, user_id, key):
-        print(f"DELETE: {key}")
-        deleted_value = self.data_store.pop(key, None)
-        self.log_operation(user_id, "delete", key, deleted_value)
+        """
+        转发给服务器去处理
+        :param user_id:
+        :param key:
+        :return:
+        """
+        deleted_value = self.service.exposed_del_key(user_id, key)
+        self.log_operation("delete", key, deleted_value)
         return deleted_value
 
     def exposed_get_log(self):
         return self.log
 
     def exposed_get_global_log(self):
-        return self.global_log
+        """
+        全局的日志也转发到服务器去返回
+        :return: global log
+        """
+        return self.service.exposed_get_global_log()
 
 
 def run_server():
