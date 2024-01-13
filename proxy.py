@@ -4,7 +4,7 @@ import threading
 import time
 
 
-class KeyValueService(rpyc.Service):
+class Proxy(rpyc.Service):
     # 用户名和密码
     users = {
         'o': 'o',
@@ -76,10 +76,8 @@ class KeyValueService(rpyc.Service):
 
 
 def run_server():
-    server = ThreadedServer(KeyValueService, port=7888)
-    server.data_store = {}
-    server.log = []
-    print("Server listening on port 8000...")
+    server = ThreadedServer(Proxy, port=7888)
+    print("Server listening on port 7888...")
 
     # 输出当前活动的线程数量
     def print_active_threads():
