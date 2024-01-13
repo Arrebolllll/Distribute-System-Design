@@ -1,5 +1,7 @@
 import rpyc
 from rpyc.utils.server import ThreadedServer
+import threading
+import time
 
 
 class KeyValueService(rpyc.Service):
@@ -45,6 +47,17 @@ def run_server():
     server.data_store = {}
     server.log = []
     print("Server listening on port 8000...")
+
+    # 输出当前活动的线程数量
+    def print_active_threads():
+        while True:
+            active_threads = threading.active_count()
+            print(f"Active threads: {active_threads}")
+            time.sleep(7)
+
+    thread = threading.Thread(target=print_active_threads)
+    thread.daemon = True
+    thread.start()
     server.start()
 
 
