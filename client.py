@@ -1,41 +1,55 @@
-import xmlrpc.client
+import sys
+
+import rpyc
+
+
+def format_log(log):
+    print("{:<12} {:<12} {:<12}".format("Operation", "Key", "Value"))
+    for entry in log:
+        operation = entry["operation"]
+        key = entry["key"]
+        value = entry["value"] if entry["value"] is not None else ""
+        print("{:<12} {:<12} {:<12}".format(operation, key, value))
+
 
 class KeyValueClient:
     def __init__(self):
-        self.server = xmlrpc.client.ServerProxy("http://localhost:8000")
+        self.conn = rpyc.connect("localhost", 8000)
+        self.service = self.conn.root
 
     def run_client(self):
         while True:
-            full_command = input("Enter command (put/del/get/log/exit): ").lower()
+            command = input("Enter command (get/put/del/log/exit): ").lower()
 
-            if full_command == 'exit':
+            if command == 'exit':
                 break
-            elif full_command.startswith('put'):
+            elif command.startswith('get'):
                 try:
-                    _, key, value = full_command.split()
-                    result = self.server.put_key(key, value)
-                    print(f"Result: {result}")
-                except ValueError:
-                    print("Invalid format. Usage: put <key> <value>")
-            elif full_command.startswith('get'):
-                try:
-                    _, key = full_command.split()
-                    result = self.server.get_key(key)
+                    _, key = command.split()
+                    result = self.service.exposed_get_key(key)
                     print(f"Result: {result}")
                 except ValueError:
                     print("Invalid format. Usage: get <key>")
-            elif full_command.startswith('del'):
+            elif command.startswith('put'):
                 try:
-                    _, key = full_command.split()
-                    result = self.server.del_key(key)
+                    _, key, value = command.split()
+                    result = self.service.exposed_put_key(key, value)
+                    print(f"Result: {result}")
+                except ValueError:
+                    print("Invalid format. Usage: put <key> <value>")
+            elif command.startswith('del'):
+                try:
+                    _, key = command.split()
+                    result = self.service.exposed_del_key(key)
                     print(f"Result: {result}")
                 except ValueError:
                     print("Invalid format. Usage: del <key>")
-            elif full_command == 'log':
-                result = self.server.get_log()
-                print(f"Log entries: {result}")
+            elif command.startswith('log'):
+                result = self.service.exposed_get_log()
+                format_log(result)
             else:
-                print("Invalid command. Please enter put/del/get/log/exit.")
+                print("Invalid command. Please enter get/put/del/log/exit.")
+
 
 if __name__ == "__main__":
     client = KeyValueClient()

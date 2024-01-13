@@ -1,34 +1,52 @@
-from xmlrpc.server import SimpleXMLRPCServer
-from xmlrpc.server import SimpleXMLRPCRequestHandler
+import rpyc
+from rpyc.utils.server import ThreadedServer
 
-class KeyValueServer:
+
+class KeyValueService(rpyc.Service):
     def __init__(self):
         self.data_store = {}
         self.log = []
 
-    def get_key(self, key):
-        value = self.data_store.get(key, None)
-        self.log.append(f"GET: {key}")
-        return value
+    def on_connect(self, conn):
+        print("Client connected")
 
-    def put_key(self, key, value):
+    def on_disconnect(self, conn):
+        print("Client disconnected")
+
+    def log_operation(self, operation, key, value=None):
+        log_entry = {"operation": operation, "key": key, "value": value}
+        self.log.append(log_entry)
+        print(f"Logged operation: {log_entry}")
+
+    def exposed_get_key(self, key):
+        print(f"GET: {key}")
+        result = self.data_store.get(key, None)
+        self.log_operation("get", key, result)
+        return result
+
+    def exposed_put_key(self, key, value):
+        print(f"PUT: {key}={value}")
         self.data_store[key] = value
-        self.log.append(f"PUT: {key}={value}")
+        self.log_operation("put", key, value)
         return "success"
 
-    def del_key(self, key):
-        value = self.data_store.pop(key, None)
-        self.log.append(f"DELETE: {key}")
-        return value
+    def exposed_del_key(self, key):
+        print(f"DELETE: {key}")
+        deleted_value = self.data_store.pop(key, None)
+        self.log_operation("delete", key, deleted_value)
+        return deleted_value
 
-    def get_log(self):
+    def exposed_get_log(self):
         return self.log
 
+
 def run_server():
-    server = SimpleXMLRPCServer(('localhost', 8000), logRequests=True, allow_none=True)
-    server.register_instance(KeyValueServer())
+    server = ThreadedServer(KeyValueService, port=8000)
+    server.data_store = {}
+    server.log = []
     print("Server listening on port 8000...")
-    server.serve_forever()
+    server.start()
+
 
 if __name__ == "__main__":
     run_server()
