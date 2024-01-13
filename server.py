@@ -1,15 +1,18 @@
 import rpyc
 from rpyc.utils.server import ThreadedServer
 import threading
-import time
 
-# 集中式数据库和日志，需要互斥访问
+# 共享的数据和锁
 data_store = {}
 log = []
-lock = threading.Lock()
+data_store_lock = threading.Lock()
 
 
 class KeyValueService(rpyc.Service):
+    def __init__(self):
+        # 服务器的缓存
+        self.cache = {}
+
     def on_connect(self, conn):
         print("Connected to proxy")
 
@@ -17,21 +20,28 @@ class KeyValueService(rpyc.Service):
         pass
 
     def log_operation(self, user_id, operation, key, value=None):
-        # with lock要删去:
         global_log_entry = {"user": user_id, "operation": operation, "key": key, "value": value}
-        log.append(global_log_entry)  # 看到全局的操作
+        log.append(global_log_entry)
 
     def exposed_get_key(self, user_id, key):
-        with lock:
-            # 生成散列值，根据usr_id和key
-            key = hash(str(user_id) + str(key))
+        key = hash(str(user_id) + str(key))
+        # 检查缓存
+        if key in self.cache:
+            # 缓存有就返
+            return self.cache[key]
+        with data_store_lock:
+            # 没有就查数据库
             print(f"GET: {key}")
             result = data_store.get(key, None)
             self.log_operation(user_id, "get", key, result)
+            # 然后加到缓存之中
+            self.cache[key] = result
             return result
 
     def exposed_put_key(self, user_id, key, value):
-        with lock:
+        if key in self.cache:
+            self.cache[key] = value
+        with data_store_lock:
             key = hash(str(user_id) + str(key))
             print(f"PUT: {key}={value}")
             data_store[key] = value
@@ -39,7 +49,7 @@ class KeyValueService(rpyc.Service):
             return "success"
 
     def exposed_del_key(self, user_id, key):
-        with lock:
+        with data_store_lock:
             key = hash(str(user_id) + str(key))
             print(f"DELETE: {key}")
             deleted_value = data_store.pop(key, None)
@@ -47,14 +57,25 @@ class KeyValueService(rpyc.Service):
             return deleted_value
 
     def exposed_get_global_log(self):
+        print(log)
         return log
 
 
-def run_server():
-    server = ThreadedServer(KeyValueService, port=8000)
-    print("Server listening on port 8000...")
+def run_server(port):
+    server = ThreadedServer(KeyValueService, port=port)
+    print(f"Server listening on port {port}...")
     server.start()
 
 
 if __name__ == "__main__":
-    run_server()
+    num_servers = 3
+    threads = []
+
+    for i in range(num_servers):
+        port = 8000 + i
+        thread = threading.Thread(target=run_server, args=(port,))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()

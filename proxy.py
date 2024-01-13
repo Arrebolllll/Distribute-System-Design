@@ -1,3 +1,4 @@
+import random
 import rpyc
 from rpyc.utils.server import ThreadedServer
 import threading
@@ -13,13 +14,17 @@ class Proxy(rpyc.Service):
     }
     # 最多允许五个客户登录
     client_conn = [False] * 5
+    # 与所有服务器取得连接
+    servers = [
+        ("localhost", 8000),
+        ("localhost", 8001),
+        ("localhost", 8002),
+    ]
+    conn_list = [rpyc.connect(server[0], server[1]).root for server in servers]
 
     def __init__(self):
         # 用户本地的日志由代理服务器维护
         self.log = []
-        # 连接到服务器，转发客户端的请求
-        self.conn = rpyc.connect("localhost", 8000)
-        self.service = self.conn.root
 
     def on_connect(self, conn):
         print("Client connected")
@@ -58,35 +63,44 @@ class Proxy(rpyc.Service):
 
     def exposed_get_key(self, user_id, key):
         """
-        这些功能要转发给服务器进行处理
+        这些功能要转发给服务器进行处理，随机选择一个服务器
         :param user_id:
         :param key:
         :return: result
         """
-        result = self.service.exposed_get_key(user_id, key)
+        index = random.randrange(len(self.conn_list))
+        print(f"Forwarding GET request to server at {8000 + index}")
+        result = self.conn_list[index].exposed_get_key(user_id, key)
+
         self.log_operation("get", key, result)
         return result
 
     def exposed_put_key(self, user_id, key, value):
         """
-        转发给服务器去处理
+        转发给服务器去处理，随机选择一个服务器
         :param user_id:
         :param key:
         :param value:
         :return:
         """
-        self.service.exposed_put_key(user_id, key, value)
+        index = random.randrange(len(self.conn_list))
+        print(f"Forwarding PUT request to server at {8000 + index}")
+        self.conn_list[index].exposed_put_key(user_id, key, value)
+
         self.log_operation("put", key, value)
         return "success"
 
     def exposed_del_key(self, user_id, key):
         """
-        转发给服务器去处理
+        转发给服务器去处理，随机选择一个服务器
         :param user_id:
         :param key:
         :return:
         """
-        deleted_value = self.service.exposed_del_key(user_id, key)
+        index = random.randrange(len(self.conn_list))
+        print(f"Forwarding DELETE request to server at {8000 + index}")
+        deleted_value = self.conn_list[index].exposed_del_key(user_id, key)
+
         self.log_operation("delete", key, deleted_value)
         return deleted_value
 
@@ -98,7 +112,10 @@ class Proxy(rpyc.Service):
         全局的日志也转发到服务器去返回
         :return: global log
         """
-        return self.service.exposed_get_global_log()
+        index = random.randrange(len(self.conn_list))
+        print(f"Forwarding log -g request to server at {8000 + index}")
+        result = self.conn_list[index].exposed_get_global_log()
+        return result
 
 
 def run_server():
